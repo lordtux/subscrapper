@@ -177,7 +177,13 @@ def __split_file_name__(full_file_name):
         return (full_file_name, None)
 
 
-
+def __transform_name__(str):
+    regex_template = "^.*S[0-9]{2}E[0-9]{2}|^.*s[0-9]{2}e[0-9]{2}"
+    regex_result = re.match(regex_template, str, re.IGNORECASE)
+    if regex_result == None:
+        return str
+    else:
+        return regex_result.group(0)
 
 def __search_by_scanning__(config):
     '''
@@ -203,7 +209,11 @@ def __search_by_scanning__(config):
     log("videos_without_subs: " + videos_without_subs.__str__())
 
     for video_without_subs in videos_without_subs:
-        config["QUERY_TEXT"] = video_without_subs
+        print "---" * 5
+        print "Original query text: " + video_without_subs
+        resolved_query_text = __transform_name__(video_without_subs)
+        print "Resolved query text: " + resolved_query_text
+        config["QUERY_TEXT"] = resolved_query_text
         current_result_divs = __search_by_config__(config)
         if current_result_divs != None:
             result_divs.extend(current_result_divs)

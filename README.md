@@ -3,7 +3,7 @@ An automatic way to manage subtitules
 
 Script mode:
 ```sh
-$ python sub-scrapper.py -m script -q <query text>
+$ python sub-scrapper.py -m script -q <query text> -l <result limit>
 ```
 
 Scanner mode:
