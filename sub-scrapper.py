@@ -22,7 +22,7 @@ import json
 
 # ######################################### CONSTANTS #########################################
 
-VERSION = "0.3"
+VERSION = "0.4"
 DEFAULT_PARSER = "lxml"
 TEMPLATE_URL = "http://www.subdivx.com/index.php?q={}&accion=5&masdesc=&subtitulos=1&realiza_b=1"
 EMPTY_SPACE = "%20"
@@ -68,6 +68,9 @@ SUB_FILE_EXTENIONS = ('srt', 'sub')
 def __get_url__(query_text):
     query_text_scaped = query_text.replace(" ", EMPTY_SPACE)
     return TEMPLATE_URL.format(query_text_scaped)
+
+def __equals_ignore_case__(a, b):
+    return a.upper() == b.upper()
 
 def __string_array_to_lower__(str_array):
 	return map(lambda s: s.lower(), str_array)
@@ -183,6 +186,7 @@ def __search_by_scanning__(config):
 
     video_file_names = []
     sub_file_names = []
+    result_divs = []
 
     for cur_file in os.listdir("."):
         splitted_file_name = __split_file_name__(cur_file)
@@ -197,6 +201,14 @@ def __search_by_scanning__(config):
 
     videos_without_subs = filter(lambda v: v not in sub_file_names, video_file_names)
     log("videos_without_subs: " + videos_without_subs.__str__())
+
+    for video_without_subs in videos_without_subs:
+        config["QUERY_TEXT"] = video_without_subs
+        current_result_divs = __search_by_config__(config)
+        if current_result_divs != None:
+            result_divs.extend(current_result_divs)
+
+    return result_divs
 
 
 def __search_by_config__(config):
@@ -245,8 +257,29 @@ def __search_by_config__(config):
     return result_divs
 
 
+# ######################################### OTHER STEPS #########################################
+def __post_retrieve__(config, result_divs):
+    # ----- download subtitles -----
+    log("Downloadind links ...")
+    for r in result_divs:
+        sub_name_for_log = r["name"] + " " + r["detail"]
+        log("\t" + r["url"] + " (" + sub_name_for_log.encode('utf-8')[:80]  + ")")
+        __download_sub__(r["url"])
 
-# ######################################### SERVER #########################################
+    # ----- handle downloads -----
+    log("Extracting content ...")
+    for file_name in os.listdir("."):
+        if (".rar" in file_name.lower() or ".zip" in file_name.lower()):
+            patoolib.extract_archive(file_name, outdir=".", verbosity=-1, interactive=False)
+    os.system('rm -f *.rar')
+    os.system('rm -f *.zip')
+
+    # ----- move files to server -----
+    if (config["SEND_TO_MEDIA_SERVER"]):
+        log("Sending to media server ...")
+        os.system("scp ./*.srt {}".format(config["SEND_TO_MEDIA_SERVER_PATH"]))
+
+# ######################################### MODE SERVER #########################################
 
 def __start_server__():
     from flask import Flask, request, jsonify
@@ -289,87 +322,27 @@ if __name__ == "__main__":
 
     print ("------------------------------------")
 
-    # if len(args) != 3:
-    #     print "\nUsage: python subget.py \"<text to search>\" \"<refine regex>\" <limit>\n"
-    #     print ('e.g.: python subget.py "homeland" ".*thesubfactory.*" 2"')
-    #     print ("####################################")
-        # sys.exit(0)
-
     # ----- show the default json config
     if (config["SHOW_POST_JSON_QUERY_EXAMPLE"]):
         __show_example_server_call__()
         sys.exit(0)
 
+    result_divs = None
     # ----- MODE SERVER -----
-    if (config["MODE"] == "server"):
+    if (__equals_ignore_case__(config["MODE"], "SERVER")):
         __show_example_server_call__()
         __start_server__()
 
     # ----- MODE SCANNER -----
-    if (config["MODE"] == "scanner"):
-        __search_by_scanning__(config)
-
+    if (__equals_ignore_case__(config["MODE"], "SCANNER")):
+        result_divs = __search_by_scanning__(config)
+        
     # ----- MODE SCRIPT -----
-    result_divs = __search_by_config__(config)
+    if (__equals_ignore_case__(config["MODE"], "SCRIPT")):
+        result_divs = __search_by_config__(config)
 
-    # # ----- start browser -----
-    # browser = RoboBrowser(history=True)
-    # browser.parser = "lxml"
-    #
-    # query_url = __get_url__(config["QUERY_TEXT"])
-    # log ("Query Url: \t\t" + query_url)
-    # browser.open(query_url)
-    #
-    # all_content = browser.find_all().__str__()
-    # has_init_results =  NO_RESULT_STR in all_content
-    # log ("Has initial results: \t" + has_init_results.__str__())
-    #
-    # # ----- create raw results list -----
-    # all_divs = browser.select("div")
-    # results = []
-    # current_result = {}
-    # for div in all_divs:
-    #     div_id = div.get("id")
-    #
-    #     if (div_id == "menu_detalle_buscador"):
-    #         current_result = {}
-    #         current_result["name"] = div.select("#menu_titulo_buscador a")[0].text
-    #         # print  dir(div)
-    #
-    #     if (div_id == "buscador_detalle"):
-    #         current_result["detail"] = div.select("#buscador_detalle_sub")[0].text
-    #         current_links = div.select("#buscador_detalle_sub_datos a")
-    #         for current_link in current_links:
-    #             current_link_href = current_link.get("href").__str__()
-    #             if "bajar.php" in current_link_href:
-    #                 current_result["url"] = current_link_href
-    #         results.append(current_result)
-    #
-    # # ----- apply regex -----
-    # result_divs = filter(lambda item: __match_exp__(config["REFINE_REGEX"], item["detail"]) , results)
-    #
-    # # ----- apply limit -----
-    # result_divs = result_divs[:config["RESULT_LIMIT"]]
-
-    # ----- download subtitles -----
-    log("Downloadind links ...")
-    for r in result_divs:
-        sub_name_for_log = r["name"] + " " + r["detail"]
-        log("\t" + r["url"] + " (" + sub_name_for_log.encode('utf-8')[:80]  + ")")
-        __download_sub__(r["url"])
-
-    # ----- handle downloas -----
-    log("Extracting content ...")
-    for file_name in os.listdir("."):
-        if (".rar" in file_name.lower() or ".zip" in file_name.lower()):
-            patoolib.extract_archive(file_name, outdir=".", verbosity=-1, interactive=False)
-    os.system('rm -f *.rar')
-    os.system('rm -f *.zip')
-
-    # ----- move files to server -----
-    if (config["SEND_TO_MEDIA_SERVER"]):
-        log("Sending to media server ...")
-        os.system("scp ./*.srt {}".format(config["SEND_TO_MEDIA_SERVER_PATH"]))
+    # ----- POST RUN HANDLING -----
+    __post_retrieve__(config, result_divs)
 
     log ("Done!")
 
